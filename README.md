@@ -11,3 +11,6 @@ Part search for N and N-1 categories (hierarchial)
 
 # Apply match percentage calculation and filter rows where combined score is greater than 90%
 
+This Streamlit-based application helps users find similar items based on predefined attributes. It takes an Excel file containing item details, allows users to input an Item Number, and retrieves the most similar items based on selected attributes and similarity scores.
+
+The app uses FAISS (Facebook AI Similarity Search) for efficient vector-based similarity search and OpenAI embeddings to compare textual attributes.
