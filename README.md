@@ -7,3 +7,6 @@ Business needs to identify parts which are similar based on the attributes of ot
 # Coding
 
 RAG and vector embedding using Open AI semantic search
+
+# Apply match percentage calculation and filter rows where combined score is greater than 90%
+
