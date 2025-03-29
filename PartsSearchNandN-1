@@ -5,9 +5,11 @@ from io import BytesIO
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.schema import Document
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 # Set OpenAI API Key
-OPENAI_API_KEY = "<Enter your OpenAI Key>"
+OPENAI_API_KEY = "your-openai-key"
 openai.api_key = OPENAI_API_KEY
 
 # Streamlit UI setup
@@ -15,9 +17,9 @@ st.set_page_config(page_title="Item Similarity Finder")
 st.title("🔍 Item Similarity Search")
 st.subheader("Upload an Excel file and enter an item number to find similar items.")
 
-# Selected columns to match
+# Selected columns for similarity comparison
 SELECTED_COLUMNS = [
-    "<parts attributes>"
+    "attributes"
 ]
 
 # File uploader
@@ -40,21 +42,23 @@ if uploaded_file is not None:
             if item_number in df["Item_number"].values:
                 item_data = df[df["Item_number"] == item_number].iloc[0]
 
-                # Function to calculate attribute match percentage for each row based on selected columns
+                # Convert numerical columns for better comparison
+                for col in SELECTED_COLUMNS:
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
+                    item_data[col] = pd.to_numeric(item_data[col], errors="coerce")
+
+                # Compute attribute match percentage for each row
                 def compute_attribute_match_percentage(row):
-                    matches = sum(
-                        str(row[col]) == str(item_data[col]) for col in SELECTED_COLUMNS
-                    )
+                    matches = sum(row[col] == item_data[col] for col in SELECTED_COLUMNS)
                     return matches / len(SELECTED_COLUMNS)
 
-                # Apply match percentage calculation and filter rows where combined score is greater than 90%
                 df["match_percentage"] = df.apply(compute_attribute_match_percentage, axis=1)
                 filtered_df = df[df["match_percentage"] >= 0.90].drop(columns=["match_percentage"])
 
                 if not filtered_df.empty:
                     # Convert each row to a document for vector embedding
                     docs = [
-                        Document(page_content=str(row[SELECTED_COLUMNS].to_dict()), metadata={"index": idx})
+                        Document(page_content=" ".join(map(str, row[SELECTED_COLUMNS].values)), metadata={"index": idx})
                         for idx, row in filtered_df.iterrows()
                     ]
 
@@ -63,16 +67,18 @@ if uploaded_file is not None:
                     vector_db = FAISS.from_documents(docs, embeddings)
 
                     # Embed the input item
-                    query_embedding = embeddings.embed_query(str(item_data[SELECTED_COLUMNS].to_dict()))
+                    query_embedding = embeddings.embed_query(" ".join(map(str, item_data[SELECTED_COLUMNS].values)))
 
-                    # Retrieve similar items with their similarity score
-                    search_results = vector_db.similarity_search_with_relevance_scores(
-                        str(item_data[SELECTED_COLUMNS].to_dict()), k=20
-                    )
+                    # Retrieve similar items
+                    search_results = vector_db.similarity_search(str(item_data[SELECTED_COLUMNS].values), k=20)
+
+                    # Compute similarity scores using cosine similarity
+                    embedded_vectors = np.array([embeddings.embed_query(doc.page_content) for doc in search_results])
+                    similarity_scores = cosine_similarity([query_embedding], embedded_vectors)[0]
 
                     # Collect results with similarity score > 0.90
                     results_data = []
-                    for i, (doc, score) in enumerate(search_results):
+                    for i, (doc, score) in enumerate(zip(search_results, similarity_scores)):
                         if score > 0.90:
                             idx = doc.metadata["index"]
                             row_data = filtered_df.loc[idx].to_dict()
@@ -89,17 +95,16 @@ if uploaded_file is not None:
                         st.write("### 🔎 Most Similar Items (90% Attribute Match & Similarity Score > 0.90):")
                         st.dataframe(results_df)
 
-                         # Convert DataFrame to CSV
+                        # Convert DataFrame to CSV
                         csv_data = results_df.to_csv(index=False).encode("utf-8")
 
                         # Create a download button in Streamlit
                         st.download_button(
-                        label="Download CSV",
-                        data=csv_data,
-                        file_name="PartsSearch.csv",
-                        mime="text/csv"
+                            label="📥 Download CSV",
+                            data=csv_data,
+                            file_name="PartsSearch.csv",
+                            mime="text/csv"
                         )
-
                     else:
                         st.warning("No similar items found with a similarity score greater than 0.90.")
                 else:
